@@ -9,15 +9,12 @@ print("========================================")
 # --- 1. CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="AURA - Caraballeda", page_icon="🛰️", layout="centered")
 
-# --- 2. CONFIGURACIÓN DE GEMINI ---
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    print("✅ API Key de Gemini leída correctamente.")
-    
-    print("🔍 PREGUNTANDO A GOOGLE QUÉ MODELOS TIENES DISPONIBLES:")
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(f" -> {m.name}")
+# Inicializar el modelo con las herramientas
+modelo = genai.GenerativeModel(
+    model_name="gemini-2.0-flash",  # <--- ¡Volvemos al que sí conectó!
+    system_instruction=INSTRUCCIONES_AURA,
+    tools=[consultar_clima_caraballeda, consultar_alerta_huracanes]
+)
             
 except Exception as e:
     print(f"❌ ERROR CRÍTICO: No se pudo leer la API Key. Detalle: {e}")
