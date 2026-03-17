@@ -6,7 +6,7 @@ import requests
 st.set_page_config(page_title="AURA - Caraballeda", page_icon="🛰️", layout="centered")
 
 # --- 2. CONFIGURACIÓN DE GEMINI ---
-# La API Key se lee de los secretos de Streamlit
+# La API Key se lee de los secretos (de Streamlit Cloud o de tu archivo local .streamlit/secrets.toml)
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # --- 3. HERRAMIENTAS (CONEXIÓN A ARCGIS) ---
@@ -42,17 +42,21 @@ Informar el riesgo cruzando datos locales (lluvia) y regionales (huracanes) usan
 <FORMATO_OBLIGATORIO_REPORTE>
 🛰️ **Sistema AURA — Monitoreo**
 *[Fecha convertida]*
+
 🌀 **Influencia Ciclónica:** [Dato]
 🌧️ **Lluvia Acumulada:** [Dato] mm
+
 🚦 **ESTADO GENERAL:** [Color y Nivel]
+
 📢 **Recomendación:** [Consejo breve adaptado al perfil]
+
 🖥️ **Monitor en vivo:** https://lsigma.maps.arcgis.com/apps/dashboards/c37a4bbf182a49c2b135672004bdf1e4
 💡 **Guías Oficiales:** https://storymaps.arcgis.com/stories/b649f5d8425443198bbad65eb39528f5#ref-n-0VE7BJ
 """
 
 # Inicializar el modelo con las herramientas
 modelo = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",  # <--- Versión súper estable y con mayor cuota gratuita
+    model_name="gemini-1.5-flash",
     system_instruction=INSTRUCCIONES_AURA,
     tools=[consultar_clima_caraballeda, consultar_alerta_huracanes]
 )
@@ -68,10 +72,15 @@ if "chat" not in st.session_state:
 # Mostrar historial de mensajes
 for mensaje in st.session_state.chat.history:
     rol = "assistant" if mensaje.role == "model" else "user"
-    # Filtrar llamadas internas a funciones para que no se vean feas en el chat
-    if not mensaje.parts[0].function_call and not mensaje.parts[0].function_response:
-        with st.chat_message(rol):
-            st.markdown(mensaje.parts[0].text)
+    # Filtrar llamadas internas a funciones para que no se vean en la interfaz
+    try:
+        if hasattr(mensaje, 'parts') and len(mensaje.parts) > 0:
+            part = mensaje.parts[0]
+            if not part.function_call and not part.function_response:
+                with st.chat_message(rol):
+                    st.markdown(part.text)
+    except Exception:
+        pass
 
 # Caja de texto para el usuario
 if prompt := st.chat_input("Ej: ¿Cuál es el reporte del clima actual?"):
@@ -82,5 +91,8 @@ if prompt := st.chat_input("Ej: ¿Cuál es el reporte del clima actual?"):
     # Procesar respuesta con AURA
     with st.chat_message("assistant"):
         with st.spinner("AURA está consultando los sensores de ArcGIS..."):
-            respuesta = st.session_state.chat.send_message(prompt)
-            st.markdown(respuesta.text)
+            try:
+                respuesta = st.session_state.chat.send_message(prompt)
+                st.markdown(respuesta.text)
+            except Exception as e:
+                st.error(f"Hubo un error al procesar tu solicitud. Por favor, intenta de nuevo en un minuto.")
