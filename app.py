@@ -2,25 +2,48 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 
+print("========================================")
+print("🚀 REINICIANDO APLICACIÓN STREAMLIT...")
+print("========================================")
+
 # --- 1. CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="AURA - Caraballeda", page_icon="🛰️", layout="centered")
 
 # --- 2. CONFIGURACIÓN DE GEMINI ---
-# La API Key se lee de los secretos (de Streamlit Cloud o de tu archivo local .streamlit/secrets.toml)
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    print("✅ API Key de Gemini leída correctamente de los secretos.")
+except Exception as e:
+    print(f"❌ ERROR CRÍTICO: No se pudo leer la API Key. Detalle: {e}")
 
 # --- 3. HERRAMIENTAS (CONEXIÓN A ARCGIS) ---
 def consultar_clima_caraballeda():
     """Consulta la lluvia acumulada actual y la fecha de los sensores en Caraballeda."""
+    print("📡 EJECUTANDO HERRAMIENTA: consultar_clima_caraballeda()")
     url = "https://services8.arcgis.com/2jmdYNQsteiDSgjD/arcgis/rest/services/weather_data_gdb_v2/FeatureServer/0/query?where=Ciudad=%27Caraballeda%27&outFields=*&orderByFields=OBJECTID+DESC&resultRecordCount=1&f=json"
-    respuesta = requests.get(url)
-    return respuesta.json()
+    try:
+        respuesta = requests.get(url)
+        print(f"   -> Status HTTP Clima: {respuesta.status_code}")
+        datos = respuesta.json()
+        print(f"   -> Datos Clima obtenidos: {datos}")
+        return datos
+    except Exception as e:
+        print(f"   -> ❌ ERROR al consultar API Clima: {e}")
+        return {"error": str(e)}
 
 def consultar_alerta_huracanes():
     """Consulta si hay alertas de huracanes activas en la región costera."""
+    print("🌀 EJECUTANDO HERRAMIENTA: consultar_alerta_huracanes()")
     url = "https://services8.arcgis.com/2jmdYNQsteiDSgjD/arcgis/rest/services/VenShapes_gdb/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=False&f=json"
-    respuesta = requests.get(url)
-    return respuesta.json()
+    try:
+        respuesta = requests.get(url)
+        print(f"   -> Status HTTP Huracanes: {respuesta.status_code}")
+        datos = respuesta.json()
+        print(f"   -> Datos Huracanes obtenidos: {datos}")
+        return datos
+    except Exception as e:
+        print(f"   -> ❌ ERROR al consultar API Huracanes: {e}")
+        return {"error": str(e)}
 
 # --- 4. SYSTEM MESSAGE (INSTRUCCIONES DE AURA) ---
 INSTRUCCIONES_AURA = """
@@ -54,12 +77,13 @@ Informar el riesgo cruzando datos locales (lluvia) y regionales (huracanes) usan
 💡 **Guías Oficiales:** https://storymaps.arcgis.com/stories/b649f5d8425443198bbad65eb39528f5#ref-n-0VE7BJ
 """
 
-# Inicializar el modelo con las herramientas
+print("🧠 Inicializando modelo Gemini 1.5 Flash...")
 modelo = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction=INSTRUCCIONES_AURA,
     tools=[consultar_clima_caraballeda, consultar_alerta_huracanes]
 )
+print("✅ Modelo inicializado con éxito.")
 
 # --- 5. INTERFAZ DE USUARIO (STREAMLIT) ---
 st.title("🛰️ AURA - Monitor de Riesgos")
@@ -67,12 +91,12 @@ st.markdown("Hola, soy AURA. Estoy aquí para informarte sobre el clima y los ri
 
 # Inicializar memoria del chat
 if "chat" not in st.session_state:
+    print("📝 Creando nueva sesión de chat...")
     st.session_state.chat = modelo.start_chat(enable_automatic_function_calling=True)
 
 # Mostrar historial de mensajes
 for mensaje in st.session_state.chat.history:
     rol = "assistant" if mensaje.role == "model" else "user"
-    # Filtrar llamadas internas a funciones para que no se vean en la interfaz
     try:
         if hasattr(mensaje, 'parts') and len(mensaje.parts) > 0:
             part = mensaje.parts[0]
@@ -84,15 +108,18 @@ for mensaje in st.session_state.chat.history:
 
 # Caja de texto para el usuario
 if prompt := st.chat_input("Ej: ¿Cuál es el reporte del clima actual?"):
-    # Mostrar lo que escribió el usuario
+    print(f"\n💬 USUARIO ESCRIBIÓ: {prompt}")
+    
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Procesar respuesta con AURA
     with st.chat_message("assistant"):
         with st.spinner("AURA está consultando los sensores de ArcGIS..."):
+            print("⏳ Enviando mensaje a Gemini...")
             try:
                 respuesta = st.session_state.chat.send_message(prompt)
+                print("✅ Respuesta recibida de Gemini correctamente.")
                 st.markdown(respuesta.text)
             except Exception as e:
-                st.error(f"Hubo un error al procesar tu solicitud. Por favor, intenta de nuevo en un minuto.")
+                print(f"🔥 ERROR AL COMUNICARSE CON GEMINI: {e}")
+                st.error(f"⚠️ Error técnico detallado: {e}")
